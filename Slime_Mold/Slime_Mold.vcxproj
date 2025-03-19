@@ -24,6 +24,7 @@
     <ProjectGuid>{9e07cddf-a588-4e62-8765-ccd889ad4c02}</ProjectGuid>
     <RootNamespace>OpenGLBoilerplate</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>Slime_Mold</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
