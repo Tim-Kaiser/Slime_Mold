@@ -74,13 +74,13 @@ void ShaderLoader::AttachShaders(Shader& shader)
     glAttachShader(shader.m_shaderProgramID, shader.m_vertexShaderID);
 }
 
-bool ShaderLoader::LinkProgram(Shader& shader)
+bool ShaderLoader::LinkProgram(GLuint& shaderProgramID)
 {
-    glLinkProgram(shader.m_shaderProgramID);
-    glUseProgram(shader.m_shaderProgramID);
+    glLinkProgram(shaderProgramID);
+    glUseProgram(shaderProgramID);
 
     GLint errorCode;
-    glGetProgramiv(shader.m_shaderProgramID, GL_LINK_STATUS, &errorCode);
+    glGetProgramiv(shaderProgramID, GL_LINK_STATUS, &errorCode);
 
     if (errorCode == GL_TRUE) {
         std::cout << "Program linked successfully" << std::endl;
@@ -89,7 +89,7 @@ bool ShaderLoader::LinkProgram(Shader& shader)
         GLsizei bufferSize = 1000;
         GLchar errorMessage[1000];
 
-        glGetProgramInfoLog(shader.m_shaderProgramID, bufferSize, &bufferSize, errorMessage);
+        glGetProgramInfoLog(shaderProgramID, bufferSize, &bufferSize, errorMessage);
         std::cout << errorMessage << std::endl;
         return false;
     }
@@ -102,7 +102,6 @@ void ShaderLoader::DetachShaders(Shader& shader)
 {
     glDetachShader(shader.m_shaderProgramID, shader.m_vertexShaderID);
     glDetachShader(shader.m_shaderProgramID, shader.m_fragmentShaderID);
-
 }
 
 void ShaderLoader::DestroyShaders(Shader& shader)
@@ -111,9 +110,34 @@ void ShaderLoader::DestroyShaders(Shader& shader)
     glDeleteShader(shader.m_fragmentShaderID);
 }
 
-void ShaderLoader::DestroyProgram(Shader& shader)
+void ShaderLoader::DestroyProgram(GLuint& shaderProgramID)
 {
-    glDeleteProgram(shader.m_shaderProgramID);
+    glDeleteProgram(shaderProgramID);
+}
+
+std::unique_ptr<ComputeShader> ShaderLoader::CreateComputeShader()
+{
+    std::unique_ptr<ComputeShader> computeShader(new ComputeShader);
+
+    computeShader->m_shaderProgramID = glCreateProgram();
+    computeShader->m_computeShaderID = glCreateShader(GL_COMPUTE_SHADER);
+
+    return computeShader;
+}
+
+void ShaderLoader::AttachShaders(ComputeShader& shader)
+{
+    glAttachShader(shader.m_shaderProgramID, shader.m_computeShaderID);
+}
+
+void ShaderLoader::DetachShaders(ComputeShader& shader)
+{
+    glDetachShader(shader.m_shaderProgramID, shader.m_computeShaderID);
+}
+
+void ShaderLoader::DestroyShaders(ComputeShader& shader)
+{
+    glDeleteShader(shader.m_computeShaderID);
 }
 
 GLint ShaderLoader::GetUniformID(const std::string& uniformName) {

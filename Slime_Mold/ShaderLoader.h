@@ -16,19 +16,38 @@ typedef struct
 
 } Shader;
 
+typedef struct 
+{
+	GLuint m_shaderProgramID;
+	GLuint m_computeShaderID;
+} ComputeShader;
+
 class ShaderLoader {
 
 public:
+
+	// === SHADER ===
 
 	std::unique_ptr<Shader> CreateShaders();
 
 	bool CompileShaders(const std::string& filename, GLuint& shaderID);
 	void AttachShaders(Shader& shader);
-	bool LinkProgram(Shader& shader);
+	bool LinkProgram(GLuint& shaderProgramID);
+
 
 	void DetachShaders(Shader& shader);
 	void DestroyShaders(Shader& shader);
-	void DestroyProgram(Shader& shader);
+	void DestroyProgram(GLuint& shaderProgramID);
+	
+	// === COMPUTE SHADER ===
+
+	std::unique_ptr<ComputeShader> CreateComputeShader();
+
+	void AttachShaders(ComputeShader& shader);
+
+	void DetachShaders(ComputeShader& shader);
+	void DestroyShaders(ComputeShader& shader);
+
 
 	GLint GetUniformID(const std::string& uniformName);
 

@@ -2,10 +2,10 @@
 in vec2 vUv;
 in vec3 vertexOut;
 
-uniform float time;
-
- out vec4 fragCol;
+uniform sampler2D tex;
+out vec4 fragCol;
 
 void main(){
-	fragCol = vec4(vUv,0.,1.);
+	vec4 texCol = texture(tex, vUv);
+	fragCol = texCol;
 }
