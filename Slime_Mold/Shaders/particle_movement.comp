@@ -1,0 +1,99 @@
+#version 460
+struct Particle {
+    vec2 pos;
+    float angle;
+};
+
+layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(rgba32f, binding = 0) uniform image2D particleMap;
+layout(rgba32f, binding = 1) uniform image2D trailMap;
+
+
+layout(std430, binding = 2) buffer particle_data
+{
+    Particle particles[];
+};
+
+
+uniform float time;
+uniform int width;
+uniform int height;
+
+
+#define PI 3.1415
+#define speed 1.
+#define trailDeposit vec4(0.5, 0.5, 0.5, 1.)
+
+// https://www.shadertoy.com/view/4ssXRX
+uvec2 pcg2d(uvec2 v)
+{
+    v = v * 1664525u + 1013904223u;
+
+    v.x += v.y * 1664525u;
+    v.y += v.x * 1664525u;
+
+    v = v ^ (v>>16u);
+
+    v.x += v.y * 1664525u;
+    v.y += v.x * 1664525u;
+
+    v = v ^ (v>>16u);
+
+    return v;
+}
+vec2 pcg2d_f(vec2 v)
+{
+    return (1.0/float(0xffffffffu)) * vec2(pcg2d( uvec2(floatBitsToUint(v.x), floatBitsToUint(v.y)) ));
+}
+
+
+
+
+
+
+
+
+void main()
+{
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+
+    if(id.x > particles.length()){
+        return;
+    }
+
+    Particle p = particles[id.x];
+
+    float seed = id.x * p.pos.y * p.angle.x * p.pos.x * (time * 0.1);
+    float random = pcg2d_f((vec2(seed))).x;
+
+    if(p.angle < 0.0)
+    {
+        p.angle = random * 2.0 * PI;
+    }
+    vec2 direction = vec2(cos(p.angle), sin(p.angle));
+    vec2 newPos = p.pos + direction * speed;
+    if(newPos.x < 0.0 || newPos.x > width || newPos.y < 0.0 || newPos.y > height)
+    {
+        newPos.x = min(width - 1., max(0, newPos.x));
+        newPos.y = min(height - 1., max(0, newPos.y));
+        p.angle = random * 2.0 * PI;
+    }
+
+    // clear particle from prev position, will be stored in extra trail map
+    imageStore(particleMap, ivec2(p.pos) , vec4(0.0));
+
+    p.pos = newPos;
+    particles[id.x] = p;
+
+    imageStore(particleMap, ivec2(newPos) , vec4(1.0));
+
+
+    // TRAIL
+
+    vec4 trailCol = imageLoad(trailMap, ivec2(newPos));
+
+    trailCol = min(trailCol + trailDeposit, vec4(1.0));
+
+    imageStore(trailMap, ivec2(newPos) , trailCol);
+}

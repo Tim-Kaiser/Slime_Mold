@@ -44,7 +44,10 @@
     <None Include="Shaders\main.vert">
       <Filter>Shaders</Filter>
     </None>
-    <None Include="Shaders\slime_mold.comp">
+    <None Include="Shaders\particle_movement.comp">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\trail_processing.comp">
       <Filter>Shaders</Filter>
     </None>
   </ItemGroup>

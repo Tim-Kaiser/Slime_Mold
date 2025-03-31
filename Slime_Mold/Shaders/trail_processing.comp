@@ -1,0 +1,34 @@
+#version 460
+
+layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(rgba32f, binding = 0) uniform image2D trailMap;
+
+#define decayRate 0.001
+
+vec3 gaussianBlur(ivec2 pos)
+{
+    vec3 blurredCol = vec3(0.);
+    vec3 trailCol = imageLoad(trailMap, pos).xyz;
+
+    // TODO
+    return trailCol;
+}
+
+
+void main()
+{
+    ivec2 texelCoord = ivec2(gl_GlobalInvocationID.xy);
+
+	vec2 uv;
+    uv.x = float(texelCoord.x)/(gl_NumWorkGroups.x);
+    uv.y = float(texelCoord.y)/(gl_NumWorkGroups.y);
+
+
+    vec3 blurredTrailCol = gaussianBlur(texelCoord);
+
+    vec4 trailCol = vec4(blurredTrailCol - decayRate, 1.0);
+
+
+    imageStore(trailMap, texelCoord, trailCol);
+}

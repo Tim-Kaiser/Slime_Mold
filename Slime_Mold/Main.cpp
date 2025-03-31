@@ -8,6 +8,13 @@
 #include <vector>
 #include <glm.hpp>
 
+
+struct Particle
+{
+	glm::vec2 position;
+	GLfloat angle;
+};
+
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
 	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
@@ -33,10 +40,16 @@ int main(int argc, char* arfv[]) {
 	shaderLoader.AttachShaders(*renderShader);
 	shaderLoader.LinkProgram(renderShader->m_shaderProgramID);
 
-	std::unique_ptr<ComputeShader> computeShader = shaderLoader.CreateComputeShader();
-	shaderLoader.CompileShaders("Shaders/slime_mold.comp", computeShader->m_computeShaderID);
-	shaderLoader.AttachShaders(*computeShader);
-	shaderLoader.LinkProgram(computeShader->m_shaderProgramID);
+	std::unique_ptr<ComputeShader> particleComputeShader = shaderLoader.CreateComputeShader();
+	shaderLoader.CompileShaders("Shaders/particle_movement.comp", particleComputeShader->m_computeShaderID);
+	shaderLoader.AttachShaders(*particleComputeShader);
+	shaderLoader.LinkProgram(particleComputeShader->m_shaderProgramID);
+
+	std::unique_ptr<ComputeShader> trailComputeShader = shaderLoader.CreateComputeShader();
+	shaderLoader.CompileShaders("Shaders/trail_processing.comp", trailComputeShader->m_computeShaderID);
+	shaderLoader.AttachShaders(*trailComputeShader);
+	shaderLoader.LinkProgram(trailComputeShader->m_shaderProgramID);
+
 
 	Object obj;
 	loadObject("Objects/quad.obj", obj);
@@ -49,11 +62,11 @@ int main(int argc, char* arfv[]) {
 	int width, height;
 	window.getSize(&width, &height);
 
-	GLuint texID;
+	GLuint particleMapID, trailMapID;
 
-	glGenTextures(1, &texID);
+	glGenTextures(1, &particleMapID);
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, texID);
+	glBindTexture(GL_TEXTURE_2D, particleMapID);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -61,32 +74,95 @@ int main(int argc, char* arfv[]) {
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA,
 		GL_FLOAT, NULL);
 
-	glBindImageTexture(0, texID, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 
+	glGenTextures(1, &trailMapID);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, trailMapID);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA,
+		GL_FLOAT, NULL);
+
+	// SSBO for particles
+
+	const int particleSize = 512;
+
+	Particle particles[particleSize];
+
+	for (int i = 0; i < particleSize; i++)
+	{
+		particles[i].position = glm::vec2(width/2,height/2);
+		particles[i].angle = -1.0;
+	}
+
+	GLuint ssbo;
+	glGenBuffers(1, &ssbo);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(particles), &particles, GL_DYNAMIC_COPY);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+	// TIMING
 	double startTime = glfwGetTime();
 
-	glClearColor(0.0, 0.0, 0.0, 0.0);
+	glClearColor(0.0, 0.0, 0.0, 1.0);
 	while (window.Open()) {
 
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		glUseProgram(computeShader->m_shaderProgramID);
+		glClear(GL_COLOR_BUFFER_BIT);
+
+		// COMPUTE SHADER
+
+		glUseProgram(particleComputeShader->m_shaderProgramID);
+
+		// SETUP
+		GLfloat timeSinceStart = (float(glfwGetTime()) - float(startTime));
+		shaderLoader.SendUniformData("time", timeSinceStart);
+		shaderLoader.SendUniformData("width", width);
+		shaderLoader.SendUniformData("height", height);
+
+		glBindImageTexture(0, particleMapID, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+		glBindImageTexture(1, trailMapID, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
+
+		// RUN
+		glDispatchCompute( (particleSize/64), 1, 1);
+
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+		// TRAIL PROCESSING
+
+		glUseProgram(trailComputeShader->m_shaderProgramID);
+		glBindImageTexture(0, trailMapID, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 		glDispatchCompute((GLuint)width, (GLuint)height, 1);
+
+
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+		// RENDER SHADER
 
-		//GLfloat timeSinceStart = (float(glfwGetTime()) - float(startTime));
-		//shaderLoader.SendUniformData("time", timeSinceStart);
+		glUseProgram(renderShader->m_shaderProgramID);
 
-		glUseProgram(renderShader->m_shaderProgramID);		
+		// SETUP
+		GLint particleShaderID = 0;
+		GLint trailShaderID = 1;
+
 		glActiveTexture(GL_TEXTURE0);
-		GLint id = 0;
-		shaderLoader.SendUniformData("tex", id);
-		glBindTexture(GL_TEXTURE_2D, texID);
+		shaderLoader.SendUniformData("particleMap", particleShaderID);
+		glBindTexture(GL_TEXTURE_2D, particleMapID);
+
+		glActiveTexture(GL_TEXTURE1);
+		shaderLoader.SendUniformData("trailMap", trailShaderID);
+		glBindTexture(GL_TEXTURE_2D, trailMapID);
+
+		// RUN
 		quadModel.Render();
 
+		// SWAP BUFFERS
 		window.Update();
 	}
 
