@@ -87,7 +87,7 @@ int main(int argc, char* arfv[]) {
 
 	// SSBO for particles
 
-	const int particleSize = 512;
+	const int particleSize = 4096;
 
 	Particle particles[particleSize];
 
@@ -106,6 +106,7 @@ int main(int argc, char* arfv[]) {
 
 	// TIMING
 	double startTime = glfwGetTime();
+	int frameCount = 0;
 
 	glClearColor(0.0, 0.0, 0.0, 1.0);
 	while (window.Open()) {
@@ -136,6 +137,7 @@ int main(int argc, char* arfv[]) {
 		// TRAIL PROCESSING
 
 		glUseProgram(trailComputeShader->m_shaderProgramID);
+		shaderLoader.SendUniformData("frame", frameCount);
 		glBindImageTexture(0, trailMapID, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 		glDispatchCompute((GLuint)width, (GLuint)height, 1);
 
@@ -161,6 +163,8 @@ int main(int argc, char* arfv[]) {
 
 		// RUN
 		quadModel.Render();
+
+		frameCount++;
 
 		// SWAP BUFFERS
 		window.Update();

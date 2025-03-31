@@ -4,12 +4,16 @@ layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
 layout(rgba32f, binding = 0) uniform image2D trailMap;
 
+uniform int frame;
+
 #define decayRate 0.001
 
 vec3 gaussianBlur(ivec2 pos)
-{
-    vec3 blurredCol = vec3(0.);
-    vec3 trailCol = imageLoad(trailMap, pos).xyz;
+{    
+    // alternating 0.5 and -0.5, technique by inigo quilez (https://www.shadertoy.com/view/MsdGD2)
+    vec2 offset = vec2(float(frame&1)) - 0.5;
+
+    vec3 trailCol = imageLoad(trailMap, ivec2(pos + offset)).xyz;
 
     // TODO
     return trailCol;
