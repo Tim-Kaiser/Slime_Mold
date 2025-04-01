@@ -7,12 +7,17 @@
 
 #include <vector>
 #include <glm.hpp>
+#include <random>
+
+#define PARTICLE_NUM 500000
+#define CIRCLE 
 
 
 struct Particle
 {
-	glm::vec2 position;
-	GLfloat angle;
+	GLfloat x;
+	GLfloat y;
+	GLfloat angle; GLfloat __padding;
 };
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
@@ -87,20 +92,49 @@ int main(int argc, char* arfv[]) {
 
 	// SSBO for particles
 
-	const int particleSize = 512;
 
-	Particle particles[particleSize];
+	std::random_device rd;
+	std::mt19937 gen(rd());
+	std::uniform_real_distribution<> angleInRad(0, 6.2831);
 
-	for (int i = 0; i < particleSize; i++)
+#ifdef CIRCLE
+
+	std::uniform_int_distribution<> circle(0, height/2.5);
+#else
+	int qW = width / 2;
+	int qH = height / 4;
+
+	std::uniform_int_distribution<> dW(1, width);
+	std::uniform_int_distribution<> dH(1, height);
+
+#endif
+
+	std::vector<Particle> particles;
+	particles.reserve(PARTICLE_NUM);
+
+	for (int i = 0; i < PARTICLE_NUM; i++)
 	{
-		particles[i].position = glm::vec2(width/2,height/2);
-		particles[i].angle = -1.0;
+		Particle p;
+#ifdef CIRCLE
+		float angle = angleInRad(gen);
+		int dist = circle(gen);
+		p.x = width/2.0f + (cos(angle) * dist);
+		p.y = height / 2.0f + (sin(angle) * dist);
+		p.angle = angle + 3.14;
+#else
+		p.x = (GLfloat)dW(gen);
+		p.y = (GLfloat)dH(gen);
+		p.angle = angleInRad(gen) + 3.14;
+#endif
+		
+
+		particles.emplace_back(p);
 	}
 
 	GLuint ssbo;
 	glGenBuffers(1, &ssbo);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(particles), &particles, GL_DYNAMIC_COPY);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, PARTICLE_NUM * sizeof(Particle), &particles[0], GL_DYNAMIC_COPY);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
@@ -129,18 +163,21 @@ int main(int argc, char* arfv[]) {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
 
 		// RUN
-		glDispatchCompute( (particleSize/64), 1, 1);
+		glDispatchCompute(PARTICLE_NUM, 1, 1);
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 		// TRAIL PROCESSING
 
 		glUseProgram(trailComputeShader->m_shaderProgramID);
+		shaderLoader.SendUniformData("width", width);
+		shaderLoader.SendUniformData("height", height);
+
 		glBindImageTexture(0, trailMapID, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 		glDispatchCompute((GLuint)width, (GLuint)height, 1);
 
 
-		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+		glMemoryBarrier(GL_ALL_BARRIER_BITS);
 
 
 		// RENDER SHADER
@@ -172,6 +209,7 @@ int main(int argc, char* arfv[]) {
 
 	shaderLoader.DestroyShaders(*renderShader);
 	shaderLoader.DestroyProgram(renderShader->m_shaderProgramID);
+
 
 	return 0;
 }

@@ -1,16 +1,17 @@
 #version 460
 struct Particle {
-    vec2 pos;
+    float x;
+    float y;
     float angle;
 };
 
-layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
 layout(rgba32f, binding = 0) uniform image2D particleMap;
 layout(rgba32f, binding = 1) uniform image2D trailMap;
 
 
-layout(std430, binding = 2) buffer particle_data
+layout(std140, binding = 2) buffer particle_data
 {
     Particle particles[];
 };
@@ -22,36 +23,91 @@ uniform int height;
 
 
 #define PI 3.1415
-#define speed 1.
-#define trailDeposit vec4(0.5, 0.5, 0.5, 1.)
+#define speed 1.0
+#define trailDeposit 0.1
+#define turnSpeed 0.4
+#define senseAngle 0.2
+#define senseDist 20.0
 
-// https://www.shadertoy.com/view/4ssXRX
-uvec2 pcg2d(uvec2 v)
+float seed(vec2 p)
 {
-    v = v * 1664525u + 1013904223u;
-
-    v.x += v.y * 1664525u;
-    v.y += v.x * 1664525u;
-
-    v = v ^ (v>>16u);
-
-    v.x += v.y * 1664525u;
-    v.y += v.x * 1664525u;
-
-    v = v ^ (v>>16u);
-
-    return v;
+    return p.y * -p.x * gl_GlobalInvocationID.x + time;
 }
-vec2 pcg2d_f(vec2 v)
+
+// https://www.shadertoy.com/view/llGSzw
+float hash11( uint n ) 
 {
-    return (1.0/float(0xffffffffu)) * vec2(pcg2d( uvec2(floatBitsToUint(v.x), floatBitsToUint(v.y)) ));
+	n = (n << 13U) ^ n;
+    n = n * (n * n * 15731U + 789221U) + 1376312589U;
+    return float( n & uint(0x7fffffffU))/float(0x7fffffff);
 }
 
 
+// https://github.com/EpicGames/UnrealEngine/blob/release/Engine/Shaders/Private/Random.ush
+float pseudo(vec2 v) {
+    v = fract(v/128.)*128. + vec2(-64.340622, -72.465622);
+    return fract(dot(v.xyx * v.xyy, vec3(20.390625, 60.703125, 2.4281209)));
+}
 
 
+// PROGRAM FUNCTIONS
 
 
+float determineNewAngle(Particle p)
+{
+
+    vec2 pos = vec2(p.x, p.y);
+    vec2 directionFront = vec2(cos(p.angle), sin(p.angle));
+    vec2 directionLeft = vec2(cos(p.angle + senseAngle), sin(p.angle + senseAngle));
+    vec2 directionRight = vec2(cos(p.angle - senseAngle), sin(p.angle - senseAngle));
+
+    float trailWeightFront, trailWeightLeft, trailWeightRight = 0.0;
+    float random = pseudo(vec2(hash11(uint(seed(pos)))));
+
+    vec2 sensorFront = pos + directionFront * senseDist;
+    vec2 sensorLeft = pos + directionLeft * senseDist;
+    vec2 sensorRight = pos + directionRight * senseDist;
+
+    for(int x = -1; x <= 1; x++)
+    {
+        for(int y = 0; y <= 1; y++)
+        {
+            float frontX = min(width-1, max(0, sensorFront.x + x));
+            float frontY = min(height-1, max(0, sensorFront.y + y));
+
+            float leftX = min(width-1, max(0, sensorLeft.x + x));
+            float leftY = min(height-1, max(0, sensorLeft.y + y));
+
+            float rightX = min(width-1, max(0, sensorRight.x + x));
+            float rightY = min(height-1, max(0, sensorRight.y + y));
+
+            trailWeightFront += dot(imageLoad(trailMap, ivec2(frontX, frontY)), vec4(1.));
+            trailWeightLeft += dot(imageLoad(trailMap, ivec2(leftX, leftY)), vec4(1.));
+            trailWeightRight += dot(imageLoad(trailMap, ivec2(rightX, rightY)), vec4(1.));
+        }
+    }
+
+
+    if(trailWeightFront + trailWeightLeft + trailWeightRight < 0.1){
+        // no trail, slightly change existing angle
+        return p.angle + (random - 0.5) * 2 * turnSpeed;
+    }
+
+    if(trailWeightFront > trailWeightLeft && trailWeightFront > trailWeightRight)
+    {
+        // dont change direction
+        return p.angle;
+    }else if(trailWeightLeft > trailWeightFront && trailWeightRight > trailWeightFront){
+        // trails in both directions, particle cant decide
+        return p.angle + (random - 0.5) * 2 * turnSpeed;
+    }else if(trailWeightLeft > trailWeightRight){
+        // move left 
+        return p.angle + random * turnSpeed;
+    }else{
+        // move right
+        return p.angle - random * turnSpeed;
+    }
+}
 
 
 void main()
@@ -63,27 +119,26 @@ void main()
     }
 
     Particle p = particles[id.x];
+    vec2 pos = vec2(p.x, p.y);
 
-    float seed = id.x * p.pos.y * p.angle.x * p.pos.x * (time * 0.1);
-    float random = pcg2d_f((vec2(seed))).x;
+    float random = pseudo(vec2(hash11(uint(seed(pos)))));
 
-    if(p.angle < 0.0)
-    {
-        p.angle = random * 2.0 * PI;
-    }
+    p.angle = determineNewAngle(p);
+
     vec2 direction = vec2(cos(p.angle), sin(p.angle));
-    vec2 newPos = p.pos + direction * speed;
+    vec2 newPos = pos + direction * speed;
     if(newPos.x < 0.0 || newPos.x > width || newPos.y < 0.0 || newPos.y > height)
     {
-        newPos.x = min(width - 1., max(0, newPos.x));
-        newPos.y = min(height - 1., max(0, newPos.y));
-        p.angle = random * 2.0 * PI;
+        newPos.x = min(width - 1., max(1, newPos.x));
+        newPos.y = min(height - 1., max(1, newPos.y));
+        p.angle = (random - 1) * 2.0;
     }
 
     // clear particle from prev position, will be stored in extra trail map
-    imageStore(particleMap, ivec2(p.pos) , vec4(0.0));
+    imageStore(particleMap, ivec2(pos) , vec4(0.0, 0.0, 0.0, 1.0));
 
-    p.pos = newPos;
+    p.x = newPos.x;
+    p.y = newPos.y;
     particles[id.x] = p;
 
     imageStore(particleMap, ivec2(newPos) , vec4(1.0));
@@ -93,7 +148,7 @@ void main()
 
     vec4 trailCol = imageLoad(trailMap, ivec2(newPos));
 
-    trailCol = min(trailCol + trailDeposit, vec4(1.0));
+    trailCol = min(vec4(trailCol.xyz + trailDeposit, 1.), vec4(1.));
 
     imageStore(trailMap, ivec2(newPos) , trailCol);
 }

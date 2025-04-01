@@ -7,13 +7,13 @@ uniform sampler2D trailMap;
 out vec4 fragCol;
 
 
-#define diffuse 0.2
 
 void main(){
 	vec4 particleCol = texture(particleMap, vUv);
-	vec4 trailCol = texture(trailMap, vUv) * vec4(1.0, 0.,0.,1.);
+	vec4 trailCol = texture(trailMap, vUv);
 
+	vec4 col = particleCol + trailCol;
 
-
-	fragCol = max(particleCol, (trailCol));
+	fragCol = clamp(vec4(0.), col, vec4(1.));
+	//fragCol = particleCol;
 }
